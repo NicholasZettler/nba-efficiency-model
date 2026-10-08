@@ -26,7 +26,8 @@ def build_pairs(df):
             continue
 
         left = df[df["SEASON_YEAR"] == a][
-            ["PLAYER_ID", "PLAYER_NAME", "FG3A", "FG3_PCT_RAW", "FG3_PCT_SHRUNK"]
+            ["PLAYER_ID", "PLAYER_NAME", "FG3A", "FG3_PCT_RAW", "FG3_PCT_SHRUNK",
+             "PRIOR_MEAN"]
         ]
         right = df[df["SEASON_YEAR"] == b][["PLAYER_ID", "FG3A", "FG3_PCT_RAW"]]
 
@@ -60,7 +61,9 @@ def report(df, label):
 
     raw = score(df["FG3_PCT_RAW_T"].to_numpy(), actual, w)
     shr = score(df["FG3_PCT_SHRUNK"].to_numpy(), actual, w)
-    base = score(np.full(len(df), actual.mean()), actual, w)
+    # Baseline: season t's league prior mean for everyone. It is known at prediction
+    # time (no peeking at next season) and equals EB with infinite shrinkage.
+    base = score(df["PRIOR_MEAN"].to_numpy(), actual, w)
 
     print(f"\n{label}   (n = {len(df):,})")
     print(f"{'':>10} {'RMSE':>9} {'wRMSE':>9} {'MAE':>9} {'slope':>9} {'r':>8}")
