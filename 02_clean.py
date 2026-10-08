@@ -1,10 +1,12 @@
-"""Collapse game logs to one row per player-season with 3PT totals."""
+"""Collapse game logs to one row per player-season with shooting totals and features."""
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
-RAW_DIR = Path("data/raw")
+RAW_DIR = Path("data/raw_v2")
+AGE_DIR = RAW_DIR / "ages"
 PROC_DIR = Path("data/processed")
 OUT_PATH = PROC_DIR / "player_season_3pt.csv"
 
@@ -13,14 +15,28 @@ MIN_GAMES = 20
 
 
 def load_all_seasons():
-    """Read every raw CSV and stack them into one frame."""
-    files = sorted(RAW_DIR.glob("*.csv"))
+    """Read every game-log CSV and stack them into one frame."""
+    files = sorted(RAW_DIR.glob("gamelogs_*.csv"))
     if not files:
-        raise RuntimeError(f"No CSVs in {RAW_DIR.resolve()}")
+        raise RuntimeError(f"No game-log CSVs in {RAW_DIR.resolve()}")
 
     df = pd.concat([pd.read_csv(p) for p in files], ignore_index=True)
     print(f"loaded {len(files)} files -> {len(df):,} game rows")
     return df
+
+
+def load_ages():
+    """Stack the per-season age files: one row per (season, player)."""
+    files = sorted(AGE_DIR.glob("ages_*.csv"))
+    if not files:
+        raise RuntimeError(f"No age CSVs in {AGE_DIR.resolve()}")
+    ages = pd.concat([pd.read_csv(p) for p in files], ignore_index=True)
+    return ages.drop_duplicates(subset=["SEASON_YEAR", "PLAYER_ID"])
+
+
+def safe_div(num, den):
+    """num / den, with NaN where den is 0."""
+    return num / den.replace(0, np.nan)
 
 
 def collapse(df):
@@ -33,13 +49,20 @@ def collapse(df):
               PLAYER_NAME=("PLAYER_NAME", "first"),
               G=("GAME_ID", "nunique"),
               MIN=("MIN", "sum"),
+              FGM=("FGM", "sum"),
+              FGA=("FGA", "sum"),
               FG3M=("FG3M", "sum"),
               FG3A=("FG3A", "sum"),
+              FTM=("FTM", "sum"),
+              FTA=("FTA", "sum"),
           )
     )
 
     out["FG3A_PG"] = out["FG3A"] / out["G"]
-    out["FG3_PCT_RAW"] = out["FG3M"] / out["FG3A"].replace(0, pd.NA)
+    out["MIN_PG"] = out["MIN"] / out["G"]
+    out["FG3_PCT_RAW"] = safe_div(out["FG3M"], out["FG3A"])
+    out["FT_PCT"] = safe_div(out["FTM"], out["FTA"])
+    out["FG3A_RATE"] = safe_div(out["FG3A"], out["FGA"])  # share of shots that are threes
     return out
 
 
@@ -62,7 +85,10 @@ def main():
     raw = load_all_seasons()
     out = collapse(raw)
 
-    print(f"\ncollapsed to {len(out):,} player-seasons")
+    ages = load_ages()
+    out = out.merge(ages, on=["SEASON_YEAR", "PLAYER_ID"], how="left")
+    missing_age = out["AGE"].isna().sum()
+    print(f"\ncollapsed to {len(out):,} player-seasons ({missing_age} missing AGE)")
     print(out.groupby("SEASON_YEAR").size().to_string())
 
     sweep_thresholds(out)
@@ -74,10 +100,12 @@ def main():
     qualified.to_csv(OUT_PATH, index=False)
     print(f"\nsaved {len(qualified):,} qualified player-seasons -> {OUT_PATH}")
 
-    print("\ntop 5 by attempts, 2024-25:")
+    latest = qualified["SEASON_YEAR"].max()
+    print(f"\ntop 5 by attempts, {latest}:")
     print(
-        qualified[qualified["SEASON_YEAR"] == "2024-25"]
-        .nlargest(5, "FG3A")[["PLAYER_NAME", "G", "FG3M", "FG3A", "FG3_PCT_RAW"]]
+        qualified[qualified["SEASON_YEAR"] == latest]
+        .nlargest(5, "FG3A")[["PLAYER_NAME", "AGE", "FG3M", "FG3A",
+                              "FG3_PCT_RAW", "FT_PCT", "FG3A_RATE"]]
         .to_string(index=False)
     )
 
