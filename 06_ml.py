@@ -168,7 +168,7 @@ def main():
         report(grp, name)
 
     print("\n" + "=" * 54)
-    print("BY SEASON-T VOLUME  (where EB lost to the league average)")
+    print("BY SEASON-T VOLUME  (ML should help most at low volume)")
     bins = [0, 100, 200, 400, np.inf]
     labels = ["<100 3PA", "100-199", "200-399", "400+"]
     preds["BUCKET"] = pd.cut(preds["FG3A"], bins=bins, labels=labels)
