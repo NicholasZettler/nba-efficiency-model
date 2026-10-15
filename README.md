@@ -94,14 +94,14 @@ Pooled over five test seasons (2020-21 through 2024-25, 1,243 player pairs):
 | Raw 3P%           | 0.0512 | −22.8% | 0.305           | 0.308             |
 | EB shrunk         | 0.0417 | —      | 0.303           | 0.785             |
 | League average    | 0.0440 | −5.5%  | —               | —                 |
-| Ridge             | 0.0409 | +2.0%  | 0.361           | 0.870             |
-| Gradient boosting | 0.0409 | +2.0%  | 0.363           | 0.805             |
+| Ridge             | 0.0409 | +1.9%  | 0.361           | 0.870             |
+| Gradient boosting | 0.0409 | +1.9%  | 0.363           | 0.805             |
 
 - **ML wins 4 of 5 test seasons** (by 3–6%); EB wins 2022-23 → 2023-24 narrowly.
 - **EB improves calibration; ML improves ranking.** Shrinking every player toward
   the same mean barely reorders them, so EB's correlation equals raw 3P%'s. Extra
   history and FT% let the models reorder players, raising correlation from 0.30 to 0.36.
-- **The gains are largest where one season says the least:** 5.9% under 100
+- **The gains are largest where one season says the least:** 4.7% under 100
   attempts and 3.1% at 100–199, falling to zero at 400+, where EB is already the best.
 - **Ridge and gradient boosting tie.** With about 2,000 noisy rows, the signal is
   close to linear, so the trees' extra flexibility doesn't pay.
