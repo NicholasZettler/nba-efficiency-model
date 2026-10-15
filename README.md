@@ -5,7 +5,8 @@ little about his true ability. This project fits a league-wide Beta prior to NBA
 3-point data by maximum likelihood, shrinks each player's percentage toward it in
 proportion to how little data he has, and tests whether the shrunk estimates
 predict the next season better than raw percentages do. It then benchmarks two
-scikit-learn models against the Bayesian estimates.
+scikit-learn models against the Bayesian estimates. The pipeline runs locally
+or as a six-task Databricks Job (see [Running on Databricks](#running-on-databricks)).
 
 ## Method
 
@@ -148,6 +149,56 @@ pull on a personal machine.
 | `04_validate.py` | scores raw vs. shrunk against the next season                     |
 | `05_features.py` | builds the season *t* → *t*+1 feature table for the ML models        |
 | `06_ml.py`       | walk-forward Ridge and gradient boosting vs. EB and baselines    |
+
+If `import pandas` fails with a NumPy 1.x/2.x error, another Python install (for
+example Anaconda's `base` environment) is leaking old packages into the run. A
+clean environment avoids it:
+
+```bash
+uv run --isolated --python 3.12 --with-requirements requirements.txt python 01_pull.py
+```
+
+## Running on Databricks
+
+Steps 02–06 also run as a six-task Databricks Job on serverless compute (Free
+Edition). Each notebook in [`databricks/`](databricks/) contains the matching
+script's model code unchanged. What changes is where data lives: CSV files become
+Delta tables in Unity Catalog, organized as bronze (raw), silver (cleaned), and
+gold (analysis-ready) layers, and the ML step logs to MLflow.
+
+![nba_pipeline Job run: six notebook tasks, all succeeded](docs/databricks_job_run.png)
+
+| Notebook             | Replaces         | Writes (Delta tables)                                        |
+|----------------------|------------------|--------------------------------------------------------------|
+| `01_bronze_ingest`   | *(new)*          | `nba_bronze_gamelogs`, `nba_bronze_ages`                     |
+| `02_silver_clean`    | `02_clean.py`    | `nba_silver_player_seasons`                                  |
+| `03_gold_model`      | `03_model.py`    | `nba_gold_shrunk`, `nba_gold_priors`                         |
+| `04_gold_validate`   | `04_validate.py` | `nba_gold_validation_pairs`, `nba_gold_validation_metrics`   |
+| `05_gold_features`   | `05_features.py` | `nba_gold_ml_pairs`                                          |
+| `06_ml_mlflow`       | `06_ml.py`       | `nba_gold_ml_predictions`, `nba_gold_ml_metrics`, MLflow run |
+
+What the Databricks version adds:
+
+- **Data-quality gate.** `01_bronze_ingest` stops the Job before anything
+  downstream runs if a season file is missing, a key is null, a shot count is
+  negative, or makes exceed attempts.
+- **Lineage.** Every bronze row records its source file and ingestion time, and
+  Unity Catalog tracks which tables each task read and wrote.
+- **Experiment tracking.** `06_ml_mlflow` logs one MLflow run per execution:
+  parameters, a nested child run per walk-forward test season, pooled RMSE / MAE /
+  correlation for every method, Ridge coefficients, permutation importances, and
+  the final Ridge and gradient-boosting models with input signatures.
+
+**To run it:**
+
+1. Run `01_pull.py` on a personal machine. Free Edition limits outbound internet,
+   so the NBA API pull stays local.
+2. Upload the CSVs to a Unity Catalog volume at `/Volumes/workspace/default/nba_raw/`:
+   the ten `gamelogs_*.csv` files at the top level and the ten `ages_*.csv` files in
+   an `ages/` subfolder.
+3. Import the `databricks/` notebooks into the workspace.
+4. Create a Job with one notebook task per file, each depending on the one before,
+   and run it. The full run takes about 2–4 minutes on serverless compute.
 
 ---
 
