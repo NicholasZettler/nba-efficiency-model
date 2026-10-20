@@ -106,6 +106,50 @@ Pooled over five test seasons (2020-21 through 2024-25, 1,243 player pairs):
 - **Ridge and gradient boosting tie.** With about 2,000 noisy rows, the signal is
   close to linear, so the trees' extra flexibility doesn't pay.
 
+## Forecast monitoring: anomaly detection and reporting
+
+A forecast is only useful if its users can tell real surprises from noise. Each
+player's season-*t* posterior gives a full predictive distribution for next season's
+makes, not just a point estimate:
+
+$$x_{t+1} \sim \text{BetaBinomial}\big(n_{t+1},\ \alpha + x_t,\ \beta + n_t - x_t\big)$$
+
+A season is flagged as an anomaly when its makes fall outside the central 95%
+interval. Makes are whole numbers, so the interval covers slightly more than 95%:
+on data simulated from the model itself, 4.2% of players are flagged by chance.
+
+| Check (2,076 player pairs)   | Result                  | If the model were exactly right |
+|------------------------------|------------------------:|--------------------------------:|
+| Flagged as anomalies         | 95 (4.6%): 45 hot, 50 cold | ~4.2%                        |
+| Flag rate by season pair     | 2.0% – 6.6%             | ~4.2% ± noise                   |
+| Flag rate, under 200 attempts | 5.6% – 5.8%            | ~4.2%                           |
+| Flag rate, 200+ attempts     | 3.8% – 4.0%             | ~4.2%                           |
+| Predictive percentile (PIT) deciles | 8.8% – 10.9% each | 10% each                       |
+
+The intervals are close to calibrated: the model's uncertainty can be trusted.
+Low-volume shooters are flagged slightly more often, the same weakness described
+under Limitations. The largest surprise: Danny Green made 198 of 435 threes in
+2018-19 when the interval said 134–183.
+
+**Reporting layer.**
+
+- `07_export_powerbi.py` reshapes the results into a star schema for Power BI: two
+  fact tables (one row per player pair with anomaly flags; one row per pair × method
+  with forecast errors) sharing player, season, volume, and method dimensions. It
+  re-computes the RMSE figures above from the new tables as a check.
+- `08_build_excel.py` writes [`reports/shrinkage-calculator.xlsx`](reports/shrinkage-calculator.xlsx),
+  built entirely from live formulas:
+  - **Calculator**: pick a season, enter makes and attempts, and get the shrunk 3P%,
+    the weight on the player's own data, and a credible interval (`INDEX/MATCH`,
+    `BETA.INV`, input validation).
+  - **Accuracy**: RMSE for every method by test season and by volume (`AVERAGEIFS`).
+  - **Anomalies**: the 95 flagged pairs, most surprising first.
+
+  The workbook was recalculated in Excel and checked against scipy and the tables
+  above.
+- A Power BI report on the star schema (forecast accuracy, anomaly monitor, player
+  drill-through) is in progress.
+
 ## Limitations
 
 - A single prior per season treats every player as coming from the same pool.
@@ -134,6 +178,9 @@ python 03_model.py
 python 04_validate.py
 python 05_features.py
 python 06_ml.py
+python 07_export_powerbi.py
+python 08_build_excel.py
+python -m pytest
 ```
 
 Run from the project root. `01_pull.py` caches each season in `data/raw_v2/`, so
@@ -149,6 +196,12 @@ pull on a personal machine.
 | `04_validate.py` | scores raw vs. shrunk against the next season                     |
 | `05_features.py` | builds the season *t* → *t*+1 feature table for the ML models        |
 | `06_ml.py`       | walk-forward Ridge and gradient boosting vs. EB and baselines    |
+| `07_export_powerbi.py` | pipeline outputs → star-schema CSVs with anomaly flags in `data/powerbi/` |
+| `08_build_excel.py` | star-schema tables → `reports/shrinkage-calculator.xlsx`      |
+
+`forecast_intervals.py` holds the predictive-interval math used by 07 and 08;
+`tests/` checks it, including that about 95% of players simulated from the model
+fall inside their interval.
 
 If `import pandas` fails with a NumPy 1.x/2.x error, another Python install (for
 example Anaconda's `base` environment) is leaking old packages into the run. A
