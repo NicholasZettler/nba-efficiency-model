@@ -24,3 +24,24 @@
 ## 2026-10-20: Reuse processed CSVs instead of re-pulling
 - Copied data/processed from the older local copy (Documents/nba-shrinkage); row
   counts match the README (2,958 / 2,076 / 1,243). Saves the 15–20 minute API pull.
+
+## 2026-10-20: Power BI export = two fact tables sharing four dimensions
+- fact_pair (2,076 rows, one per player pair, anomaly flags) and fact_forecast
+  (8,714 rows, one per pair x method). Both carry PLAYER_ID, SEASON_YEAR, and
+  VOLUME_BUCKET, so one slicer filters both; fact-to-fact relationships avoided.
+- Long format for forecasts so a single DAX measure, SQRT(AVERAGE(SQ_ERROR)),
+  scores any method on any slice.
+- IN_ML_WINDOW flag: ML predictions exist only for 1,243 pairs (test seasons
+  2020-21 to 2024-25). Comparisons against ML use this window so every method is
+  scored on the same players.
+- Check: RMSEs recomputed from the new tables match the README to 4 decimals.
+
+## 2026-10-20: Excel workbook built with live formulas (openpyxl)
+- Calculator uses INDEX/MATCH (not XLOOKUP) so it works in Excel 2010+ and on Mac.
+- New-in-2010 functions must be written as _xlfn.BETA.INV or Excel shows #NAME?.
+- openpyxl cannot calculate formulas, so verification opened the file in Excel
+  (COM), recalculated, and compared: credible intervals match scipy beta.ppf to
+  full precision; accuracy grid matches the README; 0 error cells.
+- Change from blueprint: no pytest for the workbook. The only meaningful check
+  needs Excel itself, which pytest can't assume on every machine.
+- No real PivotTables: openpyxl can't create them. Accuracy uses AVERAGEIFS grids.
